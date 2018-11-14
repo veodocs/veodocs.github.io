@@ -1,0 +1,243 @@
+<html>
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Base64/1.0.1/base64.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.5.1/marked.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="http://fonts.googleapis.com/css?family=Ubuntu:regular,bold&subset=Latin">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
+
+  <script>
+  function formatName(name) {
+    var words = name.toLowerCase().replace(/-/g, ' ').replace(/_/g, ' ').replace('.md', '');
+    return words
+    .split(' ')
+    .filter(function(word) {
+      return word.length > 0;
+    })
+    .map(function(word) {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+  }
+
+  var callCount = 0;
+  var doneCount = 0;
+
+  var ajax = function(params) {
+    var cached = window.localStorage && window.localStorage.getItem(params.hash);
+    if (cached) {
+      console.log('hit', params.url);
+      params.success(JSON.parse(cached));
+    }
+    else {
+      var onSuccess = params.success;
+      params.success = function(results) {
+        if (params.hash) {
+          window.localStorage.setItem(params.hash, JSON.stringify(results));
+        }
+        console.log('miss', params.url);
+        onSuccess(results);
+      }
+      $.ajax(params);
+    }
+  }
+
+  function toggle(e) {
+    e.preventDefault();
+    var target = e.target.tagName == 'I' ? e.target.parentNode : e.target;
+    if (target.getAttribute('class') == 'expanded') {
+      target.setAttribute('class', 'collapsed');
+    }
+    else {
+      target.setAttribute('class', 'expanded');
+    }
+  }
+
+  function treeSearch(tree, query, results) {
+    Object.keys(tree.folders).forEach(function (folder) {
+      treeSearch(tree.folders[folder], query, results);
+    })
+    tree.files.forEach(function (file) {
+      if (file.body.toLowerCase().indexOf(query) > -1) {
+        results.push(file.path);
+      }
+    });
+  }
+
+  function getByClass(name) {
+    return [].slice.call(document.getElementsByClassName(name));
+  }
+
+  function search(e) {
+    if (e.target.value.length == 0) {
+      getByClass('expanded').forEach(function (elt) {
+        elt.setAttribute('class', 'collapsed');
+      });
+      getByClass('hidden').forEach(function (elt) {
+        elt.setAttribute('class', 'collapsed');
+      });
+      return;
+    }
+    var results = [];
+    treeSearch(t, e.target.value.toLowerCase(), results);
+    getByClass('expanded').forEach(function (elt) {
+      elt.setAttribute('class', 'hidden');
+    });
+    getByClass('collapsed').forEach(function (elt) {
+      elt.setAttribute('class', 'hidden');
+    });
+
+    for (var i = 0; i < results.length; i++) {
+      var path = results[i].split('/');
+      document.getElementById(path.join('/')).setAttribute('class', 'collapsed');
+      path.pop();
+      while (path.length > 1) {
+        document.getElementById(path.join('/')).setAttribute('class', 'expanded');
+        path.pop();
+      }
+    }
+  }
+
+  function recurse(tree, url, path, hash) {
+    callCount++;
+    ajax({
+      type: 'GET',
+      url: url,
+      hash: hash,
+      cache: true,
+      dataType: 'json',
+      success: function (results) {
+        doneCount++;
+        results.forEach(function (result) {
+          if (result.type == 'dir') {
+            var childPath = path + '/' + result.name;
+            tree.folders[result.name] = {
+              folders: {},
+              files: [],
+              path: childPath
+            };
+            recurse(tree.folders[result.name], result.url, childPath, result.sha);
+          }
+          else if (result.type == 'file') {
+            callCount++;
+            ajax({
+              type: 'GET',
+              url: result.download_url,
+              hash: result.sha,
+              cache: true,
+              dataType: 'text',
+              success: function (body) {
+                doneCount++;
+                tree.files.push({
+                  name: result.name,
+                  body: body,
+                  path: result.path
+                });
+              },
+              error: function(err) {
+                doneCount++;
+                console.log(err);
+              }
+            });
+          }
+        });
+      },
+      error: function(err) {
+        doneCount++;
+        console.log(err);
+      }
+    });
+  }
+  function printTree(tree) {
+    var result = '';
+    Object.keys(tree.folders).forEach(function (folder) {
+      var name = formatName(folder);
+      result += '<a class="collapsed" name="'+tree.folders[folder].path+'" href="#'+tree.folders[folder].path+'" id="'+tree.folders[folder].path+'" onclick="toggle(event)"><i class="far fa-folder"></i> ' + name + '</a><div>' + printTree(tree.folders[folder]) + '</div>';
+    });
+    tree.files.forEach(function (file) {
+      var name = formatName(file.name);
+      result += '<a class="collapsed" name="'+file.path+'" href="#'+file.path+'" id="'+file.path+'" onclick="toggle(event)"><i class="far fa-file-alt"></i>  '+name+'</a><div>'+marked(file.body)+'</div>';
+    });
+    return result;
+  }
+  </script>
+  <style type="text/css">
+  #page div {
+    padding-left: 1em;
+    border-left: 2px solid #fafafa;
+    margin-bottom: 1em;
+  }
+
+  a {
+    text-decoration: none;
+    cursor: pointer;
+    color: #0084b4;
+  }
+
+  .collapsed, .expanded {
+    display: block;
+    margin-bottom: .5em;
+  }
+
+  .hidden {
+    display: none;
+  }
+
+  .collapsed + div, .hidden + div {
+    display: none;
+  }
+  .expanded + div {
+    display: block;
+  }
+  input {
+    border-radius: 2px;
+    border-style: solid;
+    border-color: #ddd;
+    margin-bottom: 1em;
+    padding: .25em .5em;
+    font-size: 1em;
+  }
+  body {
+    font-family: Ubuntu, "times new roman", times, roman, serif;
+    padding: 1em;
+  }
+  </style>
+</head>
+<body>
+  <input type="text" placeholder="search" onkeyup="search(event)"></input>
+  <div id="page">Loading...</div>
+  <script>
+  var baseUrl = 'https://api.github.com/repos/zack-bitcoin/amoveo/contents/docs';
+  var t = {
+    folders: {},
+    files: [],
+    path: 'docs'
+  };
+  recurse(t, baseUrl, 'docs');
+
+  function pollOnLoaded() {
+    if (callCount == doneCount) {
+      document.getElementById('page').innerHTML = printTree(t);
+      var path = window.location.hash.replace('#', '').split('/');
+      if (path.length > 1) {
+        var target = document.getElementById(path.join('/'));
+        target.setAttribute('class', 'expanded');
+        path.pop();
+        while (path.length > 1) {
+          target = document.getElementById(path.join('/'))
+          target.setAttribute('class', 'expanded');
+          path.pop();
+        }
+        window.location.hash = '';
+        target.scrollIntoView();
+      }
+    }
+    else {
+      setTimeout(pollOnLoaded, 1000);
+    }
+  }
+
+  pollOnLoaded();
+  </script>
+</body>
+</html>
