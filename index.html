@@ -1,11 +1,12 @@
 <html>
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>veodocs</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Base64/1.0.1/base64.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.5.1/marked.min.js"></script>
   <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Ubuntu:regular,bold&subset=Latin">
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
-
   <script>
   function formatName(name) {
     var words = name.toLowerCase().replace(/-/g, ' ').replace(/_/g, ' ').replace('.md', '');
@@ -50,18 +51,11 @@
     }
     else {
       target.setAttribute('class', 'expanded');
-    }
-  }
-
-  function treeSearch(tree, query, results) {
-    Object.keys(tree.folders).forEach(function (folder) {
-      treeSearch(tree.folders[folder], query, results);
-    })
-    tree.files.forEach(function (file) {
-      if (file.body.toLowerCase().indexOf(query) > -1) {
-        results.push(file.path);
+      if (target.getAttribute('data-rendered') != 'true') {
+        target.setAttribute('data-rendered', 'true');
+        document.getElementById(target.id + '-body').innerHTML = marked(f[target.id]);
       }
-    });
+    }
   }
 
   function getByClass(name) {
@@ -69,7 +63,8 @@
   }
 
   function search(e) {
-    if (e.target.value.length == 0) {
+    var query = e.target.value;
+    if (query.length == 0) {
       getByClass('expanded').forEach(function (elt) {
         elt.setAttribute('class', 'collapsed');
       });
@@ -79,7 +74,11 @@
       return;
     }
     var results = [];
-    treeSearch(t, e.target.value.toLowerCase(), results);
+    Object.keys(f).forEach(function (path) {
+      if (f[path].toLowerCase().indexOf(query) > -1) {
+        results.push(path);
+      }
+    });
     getByClass('expanded').forEach(function (elt) {
       elt.setAttribute('class', 'hidden');
     });
@@ -98,7 +97,7 @@
     }
   }
 
-  function recurse(tree, url, path, hash) {
+  function recurse(tree, files, url, hash) {
     callCount++;
     ajax({
       type: 'GET',
@@ -110,13 +109,12 @@
         doneCount++;
         results.forEach(function (result) {
           if (result.type == 'dir') {
-            var childPath = path + '/' + result.name;
             tree.folders[result.name] = {
               folders: {},
               files: [],
-              path: childPath
+              path: result.path
             };
-            recurse(tree.folders[result.name], result.url, childPath, result.sha);
+            recurse(tree.folders[result.name], files, result.url, result.sha);
           }
           else if (result.type == 'file') {
             callCount++;
@@ -130,9 +128,9 @@
                 doneCount++;
                 tree.files.push({
                   name: result.name,
-                  body: body,
                   path: result.path
                 });
+                files[result.path] = body;
               },
               error: function(err) {
                 doneCount++;
@@ -152,11 +150,12 @@
     var result = '';
     Object.keys(tree.folders).forEach(function (folder) {
       var name = formatName(folder);
-      result += '<a class="collapsed" name="'+tree.folders[folder].path+'" href="#'+tree.folders[folder].path+'" id="'+tree.folders[folder].path+'" onclick="toggle(event)"><i class="far fa-folder"></i> ' + name + '</a><div>' + printTree(tree.folders[folder]) + '</div>';
+      result +=
+        '<a class="collapsed" name="'+tree.folders[folder].path+'" href="#'+tree.folders[folder].path+'" id="'+tree.folders[folder].path+'" onclick="toggle(event)" data-rendered="true"><i class="far fa-folder"></i> ' + name + '</a><div>' + printTree(tree.folders[folder]) + '</div>';
     });
     tree.files.forEach(function (file) {
       var name = formatName(file.name);
-      result += '<a class="collapsed" name="'+file.path+'" href="#'+file.path+'" id="'+file.path+'" onclick="toggle(event)"><i class="far fa-file-alt"></i>  '+name+'</a><div>'+marked(file.body)+'</div>';
+      result += '<a class="collapsed" name="'+file.path+'" href="#'+file.path+'" id="'+file.path+'" onclick="toggle(event)"><i class="far fa-file-alt"></i>  '+name+'</a><div id="'+file.path+'-body"></div>';
     });
     return result;
   }
@@ -208,12 +207,13 @@
   <div id="page">Loading...</div>
   <script>
   var baseUrl = 'https://api.github.com/repos/zack-bitcoin/amoveo/contents/docs';
+  var f = {};
   var t = {
     folders: {},
-    files: [],
-    path: 'docs'
+    path: 'docs',
+    files: []
   };
-  recurse(t, baseUrl, 'docs');
+  recurse(t, f, baseUrl, 'docs');
 
   function pollOnLoaded() {
     if (callCount == doneCount) {
@@ -222,6 +222,9 @@
       if (path.length > 1) {
         var target = document.getElementById(path.join('/'));
         target.setAttribute('class', 'expanded');
+        if (target.getAttribute('data-rendered') != 'true') {
+          document.getElementById(target.id + '-body').innerHTML = marked(f[target.id]);
+        }
         path.pop();
         while (path.length > 1) {
           target = document.getElementById(path.join('/'))
