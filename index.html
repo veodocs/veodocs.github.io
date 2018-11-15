@@ -43,6 +43,43 @@
     }
   }
 
+  function getByClass(name) {
+    return [].slice.call(document.getElementsByClassName(name));
+  }
+
+  function getByTag(name) {
+    return [].slice.call(document.getElementsByTagName(name));
+  }
+
+  function mergeUrls(base, path) {
+    root = base.split('/');
+    while (path.indexOf('../') == 0) {
+      path = path.substr(3);
+      root.pop();
+    }
+    if (root.length > 1) {
+      root.pop();
+      return '#' + root.join('/') + '/' + path;
+    }
+    else {
+      return 'https://github.com/zack-bitcoin/amoveo/blob/master/' + path;
+    }
+  }
+
+  function render(id) {
+    document.getElementById(id + '-body').innerHTML = marked(f[id]);
+    getByTag('a').forEach(function (a) {
+      if (a.className == '') {
+        a.setAttribute('class', 'skipped');
+        var href = a.getAttribute('href');
+        if (href.indexOf('://') == -1) {
+          console.log(mergeUrls(id, href));
+          a.setAttribute('href', mergeUrls(id, href));
+        }
+      }
+    });
+  }
+
   function toggle(e) {
     e.preventDefault();
     var target = e.target.tagName == 'I' ? e.target.parentNode : e.target;
@@ -53,13 +90,9 @@
       target.setAttribute('class', 'expanded');
       if (target.getAttribute('data-rendered') != 'true') {
         target.setAttribute('data-rendered', 'true');
-        document.getElementById(target.id + '-body').innerHTML = marked(f[target.id]);
+        render(target.id);
       }
     }
-  }
-
-  function getByClass(name) {
-    return [].slice.call(document.getElementsByClassName(name));
   }
 
   function search(e) {
@@ -223,7 +256,7 @@
         var target = document.getElementById(path.join('/'));
         target.setAttribute('class', 'expanded');
         if (target.getAttribute('data-rendered') != 'true') {
-          document.getElementById(target.id + '-body').innerHTML = marked(f[target.id]);
+          render(target.id);
         }
         path.pop();
         while (path.length > 1) {
@@ -231,8 +264,10 @@
           target.setAttribute('class', 'expanded');
           path.pop();
         }
-        window.location.hash = '';
-        target.scrollIntoView();
+        // window.location.hash = '';
+        setTimeout(function () {
+          target.scrollIntoView();
+        }, 100);
       }
     }
     else {
@@ -241,6 +276,24 @@
   }
 
   pollOnLoaded();
+  window.onhashchange = function(e) {
+    var path = window.location.hash.replace('#', '').split('/');
+    if (path.length > 1) {
+      var target = document.getElementById(path.join('/'));
+      target.setAttribute('class', 'expanded');
+      if (target.getAttribute('data-rendered') != 'true') {
+        render(target.id);
+      }
+      path.pop();
+      while (path.length > 1) {
+        target = document.getElementById(path.join('/'))
+        target.setAttribute('class', 'expanded');
+        path.pop();
+      }
+      // window.location.hash = '';
+      // target.scrollIntoView();
+    }
+  };
   </script>
 </body>
 </html>
